@@ -5,5 +5,5 @@ python-dotenv
 supabase
 joblib
 numpy
-scikit-learn==1.3.0
+scikit-learn
 xgboost
