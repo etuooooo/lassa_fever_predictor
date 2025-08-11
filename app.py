@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, jsonify
 import joblib
 import numpy as np
 import os
+import threading
+import time
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -25,6 +27,10 @@ symptoms_list = [
     "fever", "sore_throat", "vomiting", "headache", "muscle_pain",
     "abdominal_pain", "diarrhea", "bleeding", "hearing_loss", "fatigue"
 ]
+
+# Store latest sensor data
+latest_sensor_data = {}
+data_lock = threading.Lock()
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -82,6 +88,7 @@ def index():
                 supabase.table("lassa_predictions").insert(data).execute()
 
         except Exception as e:
+            app.logger.error(f"Error processing form: {str(e)}")
             message = "⚠️ Error processing your input. Please check your entries."
             message_class = "danger"
 
@@ -93,7 +100,19 @@ def index():
 # API for sensor to send vitals (POST JSON)
 @app.route("/api/vitals", methods=["POST"])
 def api_vitals():
+    global latest_sensor_data
     data = request.json
+    
+    # Extract and store vital signs
+    with data_lock:
+        latest_sensor_data = {
+            "temperature": data["temperature"],
+            "heart_rate": data["heart_rate"],
+            "oxygen_level": data["oxygen_level"],
+            "timestamp": time.time()
+        }
+    
+    # Process prediction (existing functionality)
     symptoms = {key: int(data[key]) for key in symptoms_list}
     temperature = float(data["temperature"])
     heart_rate = float(data["heart_rate"])
@@ -110,8 +129,12 @@ def api_vitals():
 
     return jsonify({"prediction": prediction_result})
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# Endpoint to get latest sensor data
+@app.route("/api/latest_vitals", methods=["GET"])
+def get_latest_vitals():
+    with data_lock:
+        return jsonify(latest_sensor_data)
+
 if __name__ == "__main__":
     from waitress import serve
     serve(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
