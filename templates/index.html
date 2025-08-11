@@ -4,14 +4,29 @@
     <meta charset="UTF-8">
     <title>Lassa Fever Predictor</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        .highlight {
+            background-color: #ffffcc;
+            transition: background-color 1s ease;
+        }
+        .sensor-active {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { background-color: #ffffcc; }
+            50% { background-color: #e6ffe6; }
+            100% { background-color: #ffffcc; }
+        }
+    </style>
 </head>
 <body class="bg-light">
     <div class="container mt-5">
-        <h1 class="text-center mb-4">🦠 Lassa Fever Prediction</h1>
+        <h1 class="text-center mb-4"> Lassa Fever Prediction</h1>
 
         <!-- Instruction Message -->
         <div class="alert alert-info" role="alert">
             📋 Fill in the personal details, symptoms, and vital signs below to get a prediction.
+            <div id="sensor-status" class="mt-2 fst-italic">No sensor data received yet</div>
         </div>
 
         <!-- Feedback / Error / Prediction Message -->
@@ -51,19 +66,94 @@
                 {% endfor %}
             </div>
 
-            <h4>Vital Signs</h4>
+            <h4>Vital Signs 
+                <button type="button" id="refresh-vitals" class="btn btn-sm btn-outline-primary">
+                    <span id="refresh-icon">🔄</span> Use Latest Sensor Data
+                </button>
+            </h4>
             <div class="mb-3">
-                <input type="number" step="0.1" name="temperature" class="form-control" placeholder="Temperature (°C)" required>
+                <input type="number" step="0.1" name="temperature" id="temperature" 
+                       class="form-control" placeholder="Temperature (°C)" required>
             </div>
             <div class="mb-3">
-                <input type="number" name="heart_rate" class="form-control" placeholder="Heart Rate (bpm)" required>
+                <input type="number" name="heart_rate" id="heart_rate" 
+                       class="form-control" placeholder="Heart Rate (bpm)" required>
             </div>
             <div class="mb-3">
-                <input type="number" step="0.1" name="oxygen_level" class="form-control" placeholder="Oxygen Level (%)" required>
+                <input type="number" step="0.1" name="oxygen_level" id="oxygen_level" 
+                       class="form-control" placeholder="Oxygen Level (%)" required>
             </div>
 
             <button type="submit" class="btn btn-primary w-100">Predict</button>
         </form>
     </div>
+
+    <script>
+        // Function to update form fields with sensor data
+        function updateFormWithSensorData(data) {
+            if (data.temperature) {
+                document.getElementById('temperature').value = data.temperature;
+                flashField('temperature');
+            }
+            if (data.heart_rate) {
+                document.getElementById('heart_rate').value = data.heart_rate;
+                flashField('heart_rate');
+            }
+            if (data.oxygen_level) {
+                document.getElementById('oxygen_level').value = data.oxygen_level;
+                flashField('oxygen_level');
+            }
+            
+            // Update status message
+            const statusEl = document.getElementById('sensor-status');
+            if (data.timestamp) {
+                const timeDiff = Math.floor((Date.now()/1000 - data.timestamp));
+                statusEl.innerHTML = `<strong>Sensor data received:</strong> ${timeDiff} seconds ago`;
+            }
+        }
+        
+        // Function to add visual feedback to updated fields
+        function flashField(id) {
+            const field = document.getElementById(id);
+            field.classList.add('highlight');
+            setTimeout(() => field.classList.remove('highlight'), 1000);
+        }
+        
+        // Function to fetch latest sensor data
+        function fetchSensorData() {
+            const icon = document.getElementById('refresh-icon');
+            const statusEl = document.getElementById('sensor-status');
+            
+            icon.textContent = '⏳'; // Show loading icon
+            statusEl.textContent = "Fetching sensor data...";
+            
+            fetch('/api/latest_vitals')
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.temperature) {
+                        updateFormWithSensorData(data);
+                        statusEl.innerHTML = `<strong>Sensor data received:</strong> ${Math.floor((Date.now()/1000 - data.timestamp))} seconds ago`;
+                    } else {
+                        statusEl.textContent = "No sensor data available";
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching sensor data:', error);
+                    statusEl.textContent = "Error fetching sensor data";
+                })
+                .finally(() => {
+                    // Reset icon after 1 second
+                    setTimeout(() => {
+                        icon.textContent = '🔄';
+                    }, 1000);
+                });
+        }
+        
+        // Manual refresh button handler
+        document.getElementById('refresh-vitals').addEventListener('click', fetchSensorData);
+        
+        // Initial fetch on page load
+        window.addEventListener('load', fetchSensorData);
+    </script>
 </body>
 </html>
