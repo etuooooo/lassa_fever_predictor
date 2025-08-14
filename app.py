@@ -22,7 +22,7 @@ scaler = joblib.load("model/scaler.pkl")
 # Initialize Flask app
 app = Flask(__name__)
 
-# Define symptoms list globally
+# Define symptoms list globally - MATCHES ARDUINO
 symptoms_list = [
     "fever", "sore_throat", "vomiting", "headache", "muscle_pain",
     "abdominal_pain", "diarrhea", "bleeding", "hearing_loss", "fatigue"
@@ -103,31 +103,64 @@ def api_vitals():
     global latest_sensor_data
     data = request.json
     
-    # Extract and store vital signs
-    with data_lock:
-        latest_sensor_data = {
-            "temperature": data["temperature"],
-            "heart_rate": data["heart_rate"],
-            "oxygen_level": data["oxygen_level"],
-            "timestamp": time.time()
+    try:
+        # Validate required fields
+        required_fields = ["temperature", "heart_rate", "oxygen_level"]
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        # Extract and store vital signs
+        with data_lock:
+            latest_sensor_data = {
+                "temperature": data["temperature"],
+                "heart_rate": data["heart_rate"],
+                "oxygen_level": data["oxygen_level"],
+                "timestamp": time.time()
+            }
+        
+        # Process symptoms with default 0
+        symptoms = {key: int(data.get(key, 0)) for key in symptoms_list}
+        
+        # Convert and validate vital signs
+        temperature = float(data["temperature"])
+        heart_rate = float(data["heart_rate"])
+        oxygen_level = float(data["oxygen_level"])
+        
+        # Prepare input for model
+        input_data = np.array([[
+            *symptoms.values(),
+            temperature,
+            heart_rate,
+            oxygen_level
+        ]])
+        
+        # Scale and predict
+        scaled_input = scaler.transform(input_data)
+        prediction = model.predict(scaled_input)[0]
+        prediction_result = "Positive" if prediction == 1 else "Negative"
+        
+        # Prepare data for Supabase
+        supabase_data = {
+            **symptoms,
+            "temperature": temperature,
+            "heart_rate": heart_rate,
+            "oxygen_level": oxygen_level,
+            "prediction": prediction_result
         }
+        
+        # Save to Supabase
+        supabase.table("lassa_predictions").insert(supabase_data).execute()
+        
+        return jsonify({"prediction": prediction_result})
     
-    # Process prediction (existing functionality)
-    symptoms = {key: int(data[key]) for key in symptoms_list}
-    temperature = float(data["temperature"])
-    heart_rate = float(data["heart_rate"])
-    oxygen_level = float(data["oxygen_level"])
-
-    input_data = np.array([[*symptoms.values(), temperature, heart_rate, oxygen_level]])
-    scaled_input = scaler.transform(input_data)
-    prediction = model.predict(scaled_input)[0]
-    prediction_result = "Positive" if prediction == 1 else "Negative"
-
-    # Save to Supabase
-    data["prediction"] = prediction_result
-    supabase.table("lassa_predictions").insert(data).execute()
-
-    return jsonify({"prediction": prediction_result})
+    except KeyError as e:
+        return jsonify({"error": f"Missing required field: {str(e)}"}), 400
+    except ValueError as e:
+        return jsonify({"error": f"Invalid value: {str(e)}"}), 400
+    except Exception as e:
+        app.logger.error(f"Server error: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
 # Endpoint to get latest sensor data
 @app.route("/api/latest_vitals", methods=["GET"])
