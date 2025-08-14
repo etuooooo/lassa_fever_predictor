@@ -123,9 +123,9 @@ def api_vitals():
         symptoms = {key: int(data.get(key, 0)) for key in symptoms_list}
         
         # Convert and validate vital signs
-        temperature = float(data["temperature"])
-        heart_rate = float(data["heart_rate"])
-        oxygen_level = float(data["oxygen_level"])
+        temperature = round(float(data["temperature"]), 2)
+        heart_rate = round(float(data["heart_rate"]), 2)
+        oxygen_level = round(float(data["oxygen_level"]), 2)
         
         # Prepare input for model
         input_data = np.array([[
